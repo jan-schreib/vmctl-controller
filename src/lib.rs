@@ -1,3 +1,7 @@
+extern crate serde;
+extern crate serde_json;
+#[macro_use]
+extern crate serde_derive;
 pub mod errors;
 pub mod status;
 
@@ -6,7 +10,7 @@ use status::Status;
 use std::process::Command;
 use std::str;
 
-fn is_vm(name: &str) -> Result<u64, VmctlControllerError> {
+fn vm_id(name: &str) -> Result<u64, VmctlControllerError> {
     let status = match Status::new() {
         Ok(v) => v,
         Err(_) => return Err(VmctlControllerError::Vmctl),
@@ -19,7 +23,7 @@ fn is_vm(name: &str) -> Result<u64, VmctlControllerError> {
 }
 
 pub fn start(name: &str) -> Result<(), VmctlControllerError> {
-    is_vm(name)?;
+    vm_id(name)?;
     let vmctl = Command::new("sh")
         .arg("-c")
         .arg(&format!("vmctl start {}", name))
@@ -34,7 +38,7 @@ pub fn start(name: &str) -> Result<(), VmctlControllerError> {
 }
 
 pub fn stop(name: &str) -> Result<(), VmctlControllerError> {
-    let id = is_vm(name)?;
+    let id = vm_id(name)?;
     let vmctl = Command::new("sh")
         .arg("-c")
         .arg(&format!("vmctl stop {}", id))
@@ -43,6 +47,36 @@ pub fn stop(name: &str) -> Result<(), VmctlControllerError> {
     let out = String::from_utf8_lossy(&vmctl.stderr);
 
     if out.contains("stopping vm: requested to shutdown vm") {
+        return Ok(());
+    }
+    Err(VmctlControllerError::Stop)
+}
+
+pub fn pause(name: &str) -> Result<(), VmctlControllerError> {
+    let id = vm_id(name)?;
+    let vmctl = Command::new("sh")
+        .arg("-c")
+        .arg(&format!("vmctl pause {}", id))
+        .output()?;
+
+    let out = String::from_utf8_lossy(&vmctl.stderr);
+
+    if out.contains("vmctl: paused vm") {
+        return Ok(());
+    }
+    Err(VmctlControllerError::Stop)
+}
+
+pub fn unpause(name: &str) -> Result<(), VmctlControllerError> {
+    let id = vm_id(name)?;
+    let vmctl = Command::new("sh")
+        .arg("-c")
+        .arg(&format!("vmctl unpause {}", id))
+        .output()?;
+
+    let out = String::from_utf8_lossy(&vmctl.stderr);
+
+    if out.contains("vmctl: unpaused vm") {
         return Ok(());
     }
     Err(VmctlControllerError::Stop)

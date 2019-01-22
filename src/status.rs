@@ -4,7 +4,7 @@ use std::str::FromStr;
 use std::process::{Command, Stdio};
 use errors::VmctlControllerError;
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Status {
     pub id: u64,
     pub pid: String,
@@ -97,6 +97,14 @@ impl Status {
 
         let stats = Status::from_shell(ret);
         Ok(stats.into_iter().map(|x| x.unwrap()).collect())
+    }
+
+    pub fn new_json() -> Result<String, VmctlControllerError> {
+        let status = Status::new()?;
+        match serde_json::to_string(&status) {
+            Ok(ret) => Ok(ret),
+            Err(_) => return Err(VmctlControllerError::Vmctl)
+        }
     }
 }
 
