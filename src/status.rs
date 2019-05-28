@@ -2,7 +2,7 @@ use std::str;
 use std::str::FromStr;
 
 use std::process::{Command, Stdio};
-use errors::VmctlControllerError;
+use errors::{VmctlControllerError, VmctlControllerErrorCause};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Status {
@@ -20,14 +20,18 @@ impl FromStr for Status {
     type Err = VmctlControllerError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s == "" {
-            return Err(VmctlControllerError::Parsing);
+            return Err(VmctlControllerError{
+                cause: VmctlControllerErrorCause::Parsing
+            });
         }
 
         let status_dirty_str: Vec<&str> = s.split(' ').collect();
         let status_str: Vec<&str> = status_dirty_str.into_iter().filter(|&s| s != "").collect();
 
         if status_str.len() != 8 {
-            return Err(VmctlControllerError::Parsing);
+            return Err(VmctlControllerError{
+                cause: VmctlControllerErrorCause::Parsing
+            });
         }
 
         let id = status_str.get(0).unwrap().parse::<u64>()?;
@@ -72,12 +76,16 @@ impl Status {
             .stdout(Stdio::piped())
             .spawn() {
                 Ok(v) => v,
-                Err(_) => return Err(VmctlControllerError::Shell),
+                Err(_) => return Err(VmctlControllerError{
+                    cause: VmctlControllerErrorCause::Shell
+                }),
             };
 
         let out = match vmctl.stdout {
             Some(v) => v,
-            None => return Err(VmctlControllerError::Shell),
+            None => return Err(VmctlControllerError{
+                cause: VmctlControllerErrorCause::Shell
+            }),
         };
 
         //remove the first line of the 'vmctl status' output
@@ -87,12 +95,16 @@ impl Status {
             .stdin(Stdio::from(out))
             .output() {
                 Ok(v) => v,
-                Err(_) => return Err(VmctlControllerError::Shell),
+                Err(_) => return Err(VmctlControllerError{
+                    cause: VmctlControllerErrorCause::Shell
+                }),
             };
 
         let ret = match str::from_utf8(&tail.stdout) {
             Ok(v) => v,
-            Err(_) => return Err(VmctlControllerError::Parsing),
+            Err(_) => return Err(VmctlControllerError{
+                cause: VmctlControllerErrorCause::Parsing
+            }),
         };
 
         let stats = Status::from_shell(ret);
@@ -103,69 +115,77 @@ impl Status {
         let status = Status::new()?;
         match serde_json::to_string(&status) {
             Ok(ret) => Ok(ret),
-            Err(_) => return Err(VmctlControllerError::Vmctl)
+            Err(_) => return Err(VmctlControllerError{
+                cause: VmctlControllerErrorCause::Vmctl
+            })
         }
     }
 }
 
-#[test]
-fn empty() {
-    let result = Status::from_str("");
-    assert!(result.is_err())
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[test]
-fn garbage() {
-    let result = Status::from_str("garbage");
-    assert!(result.is_err())
-}
+    #[test]
+    fn empty() {
+        let result = Status::from_str("");
+        assert!(result.is_err())
+    }
 
-#[test]
-fn broken() {
-    let vm1 = "  a     -     1    2.0G       -      äöü";
-    let result = Status::from_str(vm1);
-    assert!(result.is_err())
-}
-#[test]
-fn from_str() {
-    let vm1 = "  1     -     1    2.0G       -       -          user one";
-    let result = Status::from_str(vm1);
-    let status = result.unwrap();
-    assert_eq!(status.id, 1)
-}
+    #[test]
+    fn garbage() {
+        let result = Status::from_str("garbage");
+        assert!(result.is_err())
+    }
 
-#[test]
-fn from_vec() {
-    let vm1 = "1     -     1    2.0G       -       -          user one";
-    let vm2 = "2     -     1    512M       -       -          user two";
-    let vm3 = "3     -     1    2.0G       -       -          user three";
-    let vm4 = "4     -     1    4.0G       -       -          user four";
+    #[test]
+    fn broken() {
+        let vm1 = "  a     -     1    2.0G       -      äöü";
+        let result = Status::from_str(vm1);
+        assert!(result.is_err())
+    }
 
-    let vm_vec = vec![vm1, vm2, vm3, vm4];
+    #[test]
+    fn from_str() {
+        let vm1 = "  1     -     1    2.0G       -       -          user one";
+        let result = Status::from_str(vm1);
+        let status = result.unwrap();
+        assert_eq!(status.id, 1)
+    }
 
-    let result = Status::from_vec(vm_vec);
-    let stati: Vec<Status> = result.into_iter().map(|x| x.unwrap()).collect();
+    #[test]
+    fn from_vec() {
+        let vm1 = "1     -     1    2.0G       -       -          user one";
+        let vm2 = "2     -     1    512M       -       -          user two";
+        let vm3 = "3     -     1    2.0G       -       -          user three";
+        let vm4 = "4     -     1    4.0G       -       -          user four";
 
-    assert_eq!(stati.get(0).unwrap().id, 1);
-    assert_eq!(stati.get(1).unwrap().owner, "user");
-    assert_eq!(stati.get(2).unwrap().name, "three");
-    assert_eq!(stati.get(3).unwrap().max_mem, "4.0G");
-}
+        let vm_vec = vec![vm1, vm2, vm3, vm4];
 
-#[test]
-fn from_shell() {
-    let shell_output = r#"
+        let result = Status::from_vec(vm_vec);
+        let stati: Vec<Status> = result.into_iter().map(|x| x.unwrap()).collect();
+
+        assert_eq!(stati.get(0).unwrap().id, 1);
+        assert_eq!(stati.get(1).unwrap().owner, "user");
+        assert_eq!(stati.get(2).unwrap().name, "three");
+        assert_eq!(stati.get(3).unwrap().max_mem, "4.0G");
+    }
+
+    #[test]
+    fn from_shell() {
+        let shell_output = r#"
     1     -     1    2.0G       -       -          user one
     2     -     1    512M       -       -          user two
     3     -     1    2.0G       -       -          user three
     4     -     1    4.0G       -       -          user four"#;
 
-    let result = Status::from_shell(shell_output);
+        let result = Status::from_shell(shell_output);
 
-    let stati: Vec<Status> = result.into_iter().map(|x| x.unwrap()).collect();
+        let stati: Vec<Status> = result.into_iter().map(|x| x.unwrap()).collect();
 
-    assert_eq!(stati.get(0).unwrap().id, 1);
-    assert_eq!(stati.get(1).unwrap().owner, "user");
-    assert_eq!(stati.get(2).unwrap().name, "three");
-    assert_eq!(stati.get(3).unwrap().max_mem, "4.0G");
+        assert_eq!(stati.get(0).unwrap().id, 1);
+        assert_eq!(stati.get(1).unwrap().owner, "user");
+        assert_eq!(stati.get(2).unwrap().name, "three");
+        assert_eq!(stati.get(3).unwrap().max_mem, "4.0G");
+    }
 }

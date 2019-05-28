@@ -5,7 +5,7 @@ extern crate serde_derive;
 pub mod errors;
 pub mod status;
 
-use errors::VmctlControllerError;
+use errors::{VmctlControllerError, VmctlControllerErrorCause};
 use status::Status;
 use std::process::Command;
 use std::str;
@@ -13,11 +13,13 @@ use std::str;
 fn vm_id(name: &str) -> Result<u64, VmctlControllerError> {
     let status = match Status::new() {
         Ok(v) => v,
-        Err(_) => return Err(VmctlControllerError::Vmctl),
+        Err(e) => return Err(e)
     };
     let vm = match status.iter().find(|ref x| x.name == name) {
         Some(vm) => Ok(vm.id),
-        None => Err(VmctlControllerError::VmNotFound),
+        None => Err(VmctlControllerError{
+            cause: VmctlControllerErrorCause::VmNotFound
+        }),
     };
     vm
 }
@@ -34,7 +36,9 @@ pub fn start(name: &str) -> Result<(), VmctlControllerError> {
     if out.contains("vmctl: started vm") {
         return Ok(());
     }
-    Err(VmctlControllerError::Start)
+    Err(VmctlControllerError{
+        cause: VmctlControllerErrorCause::Start
+    })
 }
 
 pub fn stop(name: &str) -> Result<(), VmctlControllerError> {
@@ -49,7 +53,9 @@ pub fn stop(name: &str) -> Result<(), VmctlControllerError> {
     if out.contains("stopping vm: requested to shutdown vm") {
         return Ok(());
     }
-    Err(VmctlControllerError::Stop)
+    Err(VmctlControllerError{
+        cause: VmctlControllerErrorCause::Stop
+    })
 }
 
 pub fn pause(name: &str) -> Result<(), VmctlControllerError> {
@@ -64,7 +70,9 @@ pub fn pause(name: &str) -> Result<(), VmctlControllerError> {
     if out.contains("vmctl: paused vm") {
         return Ok(());
     }
-    Err(VmctlControllerError::Stop)
+    Err(VmctlControllerError{
+        cause: VmctlControllerErrorCause::Stop
+    })
 }
 
 pub fn unpause(name: &str) -> Result<(), VmctlControllerError> {
@@ -79,5 +87,7 @@ pub fn unpause(name: &str) -> Result<(), VmctlControllerError> {
     if out.contains("vmctl: unpaused vm") {
         return Ok(());
     }
-    Err(VmctlControllerError::Stop)
+    Err(VmctlControllerError{
+        cause: VmctlControllerErrorCause::Stop
+    })
 }
